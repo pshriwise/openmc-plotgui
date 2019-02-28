@@ -17,6 +17,12 @@ np.random.seed(10)
 def random_rgb():
     return tuple(np.random.choice(range(256), size=3))
 
+def rgb_normalize(rgb):
+    return tuple([c/255. for c in rgb])
+
+def random_norm_rgb():
+    return rgb_normalize(random_rgb())
+
 class PlotModel():
     """ Geometry and plot settings for OpenMC Plot Explorer model
 
@@ -124,14 +130,17 @@ class PlotModel():
         # generate colors if not present
         for cell_id, cell in cv.cells.items():
             if cell.color == None:
-                cell.color = random_rgb()
+                cell.color = random_norm_rgb()
 
         for mat_id, mat in cv.materials.items():
             if mat.color == None:
-                mat.color = random_rgb()
+                mat.color = random_norm_rgb()
 
-        image = np.ones((cv.vRes, cv.hRes, 3), dtype = int)
+        image = np.ones((cv.vRes, cv.hRes, 4), dtype=float)
 
+        # isolate rgb values for updating
+        rgbs = image[...,0:3]
+        alphas = image[...,3]
         # set domain and source
         if cv.colorby == 'cell':
             domain = cv.cells
@@ -141,22 +150,27 @@ class PlotModel():
             source = self.modelMaterials
 
         unique_ids = np.unique(self.ids)
+        bg_color_norm = rgb_normalize(cv.plotBackground)
         for id in unique_ids:
             if id == -1:
-                image[self.ids == id] = cv.plotBackground
+                rgbs[self.ids == id] = bg_color_norm
             else:
-                image[self.ids == id] = domain[str(id)].color
+                rgbs[self.ids == id] = domain[str(id)].color
 
         if cv.masking:
+            mask_color_norm = rgb_normalize(cv.maskBackground)
             for id, dom in domain.items():
                 if dom.masked:
-                    image[self.ids == int(id)] = cv.maskBackground
+                    rgbs[self.ids == int(id)] = mask_color_norm
 
         if cv.highlighting:
+            highlight_color_norm = rgb_normalize(cv.highlightBackground)
             for id, dom in domain.items():
                 if dom.highlighted:
-                    image[self.ids == int(id)] = cv.highlightBackground
+                    rgbs[self.ids == int(id)] = highlight_color_norm
+                    alphas[self.ids == int(id)] = cv.highlightAlpha
 
+        # set the updated image data
         self.image = image
 
     def undo(self):
@@ -298,7 +312,7 @@ class PlotView():
                 name = dom.attrib['name']
             else:
                 name = None
-            color = random_rgb()
+            color = random_norm_rgb()
             masked = False
             highlighted = False
             domain = DomainView(id, name, color, masked, highlighted)
